@@ -8,5 +8,8 @@
  "qps": 227.7,
  "p50_ms": 151.8,
  "p95_ms": 578.4,
- "p99_ms": 1052.94
+ "p99_ms": 1052.94,
+ "mean_ms": 209.85,
+ "graph": "single local graph-node (release build), ~45k nodes / ~53k CITES edges, 8 vCPU box",
+ "note": "32 concurrent clients for 30.2s on one local graph-node (~45k nodes, ~53k edges, 8 vCPU). Latency is per operation; a path check is 2 queries."
 }
