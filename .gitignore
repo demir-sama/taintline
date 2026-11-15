@@ -1,0 +1,12 @@
+.venv/
+.hydradb/
+__pycache__/
+*.pyc
+data/emb.npz
+node_modules/
+.vercel/
+.env*
+.cache/
+/dist/
+web/data/
+docs/*.png

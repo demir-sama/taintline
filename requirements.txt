@@ -1,0 +1,6 @@
+requests>=2.31
+numpy>=1.26
+fastembed>=0.4
+tiktoken>=0.7
+matplotlib>=3.8
+pytest>=8
