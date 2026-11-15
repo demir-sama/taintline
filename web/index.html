@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Taintline: does your evidence rest on a retraction?</title>
+<meta name="description" content="A self-improving citation graph on HydraDB that tells research agents when a paper's evidence chain leads to retracted work.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="#"><span class="mark" aria-hidden="true"></span>Taintline</a>
+  <nav><a href="#curve">Curve</a><a href="#check">Check a paper</a><a href="#cost">Cost</a><a href="#how">How</a><a href="#market">Market</a></nav>
+  <span class="tag">HydraDB Hackathon · Track 1</span>
+</header>
+
+<main>
+<section class="hero">
+  <p class="kicker">Retraction contamination, traced</p>
+  <h1>Your agent cited a clean paper.<br><em>That paper cited a retracted one.</em></h1>
+  <p class="lede">Taintline is a citation graph on HydraDB that answers one question for research agents: <strong>does this paper's evidence chain lead to retracted work?</strong> It starts knowing only the retraction list, reads references only when a question needs them, and gets sharper with every question it answers.</p>
+  <div class="stats" id="stats"></div>
+  <p class="fine">Snapshot: <span id="ds"></span> from OpenAlex (CC0). Precomputed demo of a real HydraDB run; live mode is in the repo.</p>
+</section>
+
+<section id="curve" class="panel">
+  <div class="panel-head">
+    <h2>Sharper every round</h2>
+    <p>790 questions in rounds of 100. Each answer may read at most 3 extra reference lists. Shaded bands span 5 shuffled question orders.</p>
+  </div>
+  <div class="chart-wrap"><svg id="chart" role="img" aria-label="Accuracy per round"></svg></div>
+  <ul class="legend" id="legend"></ul>
+  <p class="note" id="curve-note"></p>
+</section>
+
+<section id="check" class="panel">
+  <div class="panel-head">
+    <h2>Check a paper</h2>
+    <p>Pick any of the 790 benchmark papers. Left: the evidence Taintline hands an agent. Right: what a vector store retrieves for the same paper.</p>
+  </div>
+  <div class="picker">
+    <input id="q" type="search" placeholder="Search titles: ivermectin, hydroxychloroquine, long covid…" autocomplete="off" aria-label="Search papers">
+    <div class="chips"><button data-f="all" class="on">All</button><button data-f="tainted">Tainted</button><button data-f="clean">No retracted ancestor</button><button data-f="miss">Misses</button></div>
+    <ol id="results" class="results"></ol>
+  </div>
+  <div class="compare" id="compare" hidden>
+    <article class="card tl">
+      <header><span class="who">Taintline on HydraDB</span><span class="tok" id="tl-tok"></span></header>
+      <h3 id="p-title"></h3>
+      <p class="meta" id="p-meta"></p>
+      <div id="verdict" class="verdict"></div>
+      <div id="path" class="path"></div>
+      <details><summary>Context sent to the agent</summary><pre id="ctx"></pre></details>
+    </article>
+    <article class="card vec">
+      <header><span class="who">Vector store, top 5</span><span class="tok" id="v-tok"></span></header>
+      <ol id="vhits" class="vhits"></ol>
+      <p class="note" id="vnote"></p>
+    </article>
+  </div>
+</section>
+
+<section id="cost" class="panel">
+  <div class="panel-head"><h2>What it costs to know</h2><p>Accuracy, ingestion and context size, measured on the same 790 questions.</p></div>
+  <div class="table-wrap"><table id="tbl"></table></div>
+  <div class="grid2">
+    <div class="box"><h3>Budget sweep</h3><p class="sub">Extra reference lists Taintline may read per question (one question order).</p><table id="sweep"></table></div>
+    <div class="box"><h3>Under load</h3><p class="sub">Concurrent path + frontier queries against one local HydraDB node.</p><div id="load"></div></div>
+  </div>
+</section>
+
+<section id="how" class="panel">
+  <div class="panel-head"><h2>How it learns</h2></div>
+  <ol class="steps">
+    <li><b>Seed.</b> The graph starts with the public retraction list and nothing else.</li>
+    <li><b>Ingest the gap.</b> A question reads the paper's references (one fetch) and asks HydraDB for a path to a retraction.</li>
+    <li><b>Expand where the graph points.</b> No path yet? HydraDB ranks unread references by how many already-ingested papers cite them, and Taintline reads the top one. Up to 3 times.</li>
+    <li><b>Keep everything.</b> Every reference list it reads stays in the graph, so the next question in that area starts closer to the answer. That is why the curve rises.</li>
+  </ol>
+  <div class="code">
+<pre><span class="c">// one traversal answers "is there a retraction within two citations?"</span>
+MATCH (q:Work {id: $q})-[:CITES]->(x:Work)-[:CITES]->(r:Work)
+WHERE r.retracted = 1 RETURN x.id AS via, r.id AS rid
+
+<span class="c">// where to read next: unread references, ranked by what the graph already knows</span>
+MATCH (q:Work {id: $q})-[:CITES]->(x:Work)&lt;-[:CITES]-(p:Work)
+WHERE x.fetched = 0
+RETURN x.id AS id, sum(p.verdict) AS score, count(*) AS citers</pre>
+  </div>
+  <div class="why">
+    <h3>Why not a vector store?</h3>
+    <p>Contamination is a fact about citations, not about wording. A vector store finds papers that <em>sound like</em> retracted work, so it flags honest papers on the same topic and misses chains that go through a paper with different wording. Taintline only says "tainted" when it can show the citation path, so every flag is checkable.</p>
+  </div>
+  <div class="why honest">
+    <h3>What we are honest about</h3>
+    <ul id="honest"></ul>
+  </div>
+</section>
+
+<section id="market" class="panel">
+  <div class="panel-head"><h2>Who pays</h2></div>
+  <div class="grid3">
+    <div class="box"><h3>Buyer</h3><p>Research-integrity teams at publishers and journals, systematic-review groups, pharma medical-affairs teams, and makers of AI research agents (Elicit-style tools, literature-review copilots) who cannot afford to cite retracted evidence.</p></div>
+    <div class="box"><h3>Wedge</h3><p>An agent tool and API: <code>check(doi)</code> returns a verdict and the citation path in under 100 tokens. Drop it into an agent's toolset or a manuscript-submission check. Every customer query also enriches the shared graph.</p></div>
+    <div class="box"><h3>Pricing</h3><p>Free: 100 checks/month. Pro $49/month: 10k checks and webhook alerts when a paper you cite gets a newly retracted ancestor. Publisher plan from $1,500/month: bulk manuscript screening and audit export.</p></div>
+  </div>
+  <p class="fine">Market signal: Retraction Watch's database lists more than 50,000 retractions, and Crossref has distributed it openly since 2023. Citation of retracted work after retraction is a documented, ongoing problem.</p>
+</section>
+</main>
+
+<footer class="foot">
+  <p>Built by Demir for the HydraDB Hackathon, Nov 2026. Data: OpenAlex (CC0), retraction flags from Retraction Watch via OpenAlex. Graph: <a href="https://github.com/hydra-db/hydradb">HydraDB</a> (ELv2).</p>
+</footer>
+<script src="app.js" type="module"></script>
+</body>
+</html>
